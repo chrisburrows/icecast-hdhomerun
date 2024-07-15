@@ -1,0 +1,28 @@
+{
+  "ffmpeg": "/usr/bin/ffmpeg",
+  "codec": "mp3",
+  "mqtt": {
+    "host": "mqtt.local",
+    "port": 1883,
+    "username": "mqtt",
+    "password": "password",
+    "client_id": "some id",
+    "base_topic": "local-radio",
+    "status_topic": "status",
+    "station_topic": "station",
+    "command": "command"
+  },
+  "icecast": {
+    "scheme": "http",
+    "server": "icecast.local:8000",
+    "mount": "radio",
+    "username": "source",
+    "password": "source-password",
+    "idle_time": 120
+  },
+  "hdhomerun": {
+    "scheme": "http",
+    "server": "hdhomerun.local",
+    "port": 80
+  }
+}

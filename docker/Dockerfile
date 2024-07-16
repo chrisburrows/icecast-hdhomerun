@@ -7,11 +7,12 @@ RUN apt-get autoclean
 
 RUN mkdir -p /radio/src /radio/etc
 
-COPY src/* /radio/src
+COPY src/* /radio/src/
 COPY requirements.txt /radio
 
 RUN pip install --upgrade pip
 RUN pip install -r /radio/requirements.txt
 
+USER nobody
 WORKDIR /radio/src
 CMD python radio.py --config /radio/etc/config.json

@@ -1,4 +1,4 @@
-#!/Users/chrisburrows/Personal/src/local-radio/server-framework/.venv/bin/python3.10
+#!/Users/chrisburrows/Personal/src/icecast-hdhomerun/.venv/bin/python3.11
 # -*- coding: utf-8 -*-
 import re
 import sys

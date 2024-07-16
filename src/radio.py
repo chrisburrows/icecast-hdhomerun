@@ -1,8 +1,12 @@
+import subprocess
 import sys
 import os
 import logging
 import argparse
 import time
+from subprocess import Popen
+from pipe_writer import PipeWriter
+from ffmpeg import FFmpeg
 from process_runner import ProcessRunner
 from mqtt_server import MqttServer
 from mqtt_device import MqttDevice, get_ref_device
@@ -12,6 +16,7 @@ from mqtt_switch import MqttSwitch, ON, OFF
 from hdhomerun import HdHomeRun
 from icecast import Icecast
 from config import Config
+import hifi_berry
 
 APP_NAME = "Radio Belstead"
 ON: bool = True
@@ -239,6 +244,21 @@ class Radio(MqttServer):
             self.process.stop()
         sys.exit(0)
 
+    def hifi(self):
+        """Launch input from HiFi Berry and write to Owntone"""
+
+        ffmpeg = FFmpeg()
+        ffmpeg_transcode = ffmpeg.preamble() + ffmpeg.pipe_input() + ffmpeg.pipe_input()
+
+        owntone_pipe = open("audio_pipe", "wb")
+
+        hifi = Popen(hifi_berry.hifi_berry(), stdin=subprocess.PIPE)
+        transcode = Popen(ffmpeg_transcode, stdin=hifi.stdout, stdout=subprocess.PIPE)
+
+        owntone = PipeWriter(transcode.stdout, owntone_pipe)
+
+
+
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
@@ -254,6 +274,9 @@ if __name__ == '__main__':
         configuration = Config(args.config)
         configuration.load()
         radio = Radio(configuration)
+
+        radio.hifi()
+
         radio.run()
     except KeyboardInterrupt:
         radio.stop()

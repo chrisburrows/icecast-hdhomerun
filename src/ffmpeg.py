@@ -13,8 +13,11 @@ def _find_ffmpeg() -> str:
 
 class FFmpeg:
 
-    def __init__(self):
-        self._ffmpeg = _find_ffmpeg()
+    def __init__(self, path: str = None):
+        if path is None:
+            self._ffmpeg = _find_ffmpeg()
+        else:
+            self._ffmpeg = path
 
     def preamble(self) -> [str]:
         return [
@@ -42,6 +45,15 @@ class FFmpeg:
             '-map', '0:a:0',
             '-ar', '48000',
             '-ac', '2'
+        ]
+
+    def hifiberry_input(self) -> [str]:
+        return [
+            "-f", "alsa",
+            "-c:a", "pcm_s32le",
+            "-r", "48000",
+            "-use_wallclock_as_timestamps", "1",
+            "-i", "dsnoop:CARD=sndrpihifiberry,DEV=0"
         ]
 
     def icecast_output(self, name: str, description: str, icecast: str) -> [str]:

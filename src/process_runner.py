@@ -1,5 +1,4 @@
 import logging
-import queue
 import subprocess
 import threading
 import time
@@ -9,13 +8,17 @@ import atexit
 from queue import Queue
 from typing import Callable
 
+from src.process_state import ProcessState
+
 
 class ProcessRunner:
     _logger = logging.getLogger(__name__)
 
-    def __init__(self, callback: Callable):
+    def __init__(self, callback: Callable, pipe_stdin: bool = False, pipe_stdout: bool = False) -> None:
         self._logger.info("Starting ProcessRunner")
         self._callback = callback
+        self._pipe_stdin = pipe_stdin
+        self._pipe_stdout = pipe_stdout
         self._queue: Queue = Queue()
         self._manager: threading.Thread = None
         self._watcher: threading.Thread = None
@@ -23,7 +26,7 @@ class ProcessRunner:
         self._manager = threading.Thread(target=self._manage)
         self._manager.daemon = True
         self._manager.start()
-        # atexit.register(self.stop)
+        atexit.register(self.stop)
 
     def start(self, command: list[str], restart: bool = False):
         """Pass the command to run"""
@@ -65,12 +68,12 @@ class ProcessRunner:
                                              shell=False,
                                              start_new_session=True)
             if self._callback is not None:
-                self._callback("start", 0)
+                self._callback(ProcessState.STARTED, 0)
 
             self._process.wait()
 
             if self._callback is not None:
-                self._callback("stop", self._process.returncode)
+                self._callback(ProcessState.STOPPED, self._process.returncode)
 
             if not restart or self._process.returncode < 0:
                 break
@@ -105,6 +108,14 @@ class ProcessRunner:
         if self._process is not None and self._process.returncode is None:
             self._logger.debug("Waiting for process")
             self._process.wait()
+
+    def get_stdin(self):
+        """Get the STDIN pipe for the command - to send it data"""
+        return self._process.stdin if self._process is not None else None
+
+    def get_stdout(self):
+        """Get the STDIN pipe for the command - to send it data"""
+        return self._process.stdout if self._process is not None else None
 
 
 if __name__ == "__main__":

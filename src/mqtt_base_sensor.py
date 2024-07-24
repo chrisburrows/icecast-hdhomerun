@@ -32,7 +32,7 @@ class MqttBaseSensor:
         self.value = value
         self.mqtt.publish(topic=self.config["state_topic"], message=value, retain=self.retain)
 
-    def get_value(self) -> None:
+    def get_value(self) -> str:
         return self.value
 
     def get_name(self) -> str:

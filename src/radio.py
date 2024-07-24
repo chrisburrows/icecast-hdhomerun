@@ -1,13 +1,13 @@
 import subprocess
 import sys
-import os
 import logging
 import argparse
 import time
 from subprocess import Popen
 from pipe_writer import PipeWriter
 from ffmpeg import FFmpeg
-from process_runner import ProcessRunner, ProcessState
+from process_runner import ProcessRunner
+from process_state import ProcessState
 from mqtt_server import MqttServer
 from mqtt_device import MqttDevice, get_ref_device
 from mqtt_sensor import MqttSensor

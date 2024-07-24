@@ -8,7 +8,7 @@ from collections import deque
 import fcntl
 import select
 
-from src.process_state import ProcessState
+from process_state import ProcessState
 
 MAX_CHUNKS = 256
 CHUNK_SIZE = 1024

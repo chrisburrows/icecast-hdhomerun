@@ -8,7 +8,7 @@ import atexit
 from queue import Queue
 from typing import Callable
 
-from src.process_state import ProcessState
+from process_state import ProcessState
 
 
 class ProcessRunner:

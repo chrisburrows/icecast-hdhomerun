@@ -16,6 +16,7 @@ class HdHomeRun:
                     .format(scheme=config["scheme"], server=config["server"], port=config["port"]))
         # self.stream_url = "{scheme}}://{server}:{port}".format(server=config["server"], port=config["streaming_port"])
 
+        self.wanted_channels = config['channels']
         self.channels: dict = dict()
         self.last_update: int = 0
         self.callback: Callable = None
@@ -33,7 +34,7 @@ class HdHomeRun:
             tmp: dict = dict()
             for ch in r.json():
                 # we only want Radio stations
-                if "AudioCodec" in ch and "VideoCodec" not in ch:
+                if "AudioCodec" in ch and "VideoCodec" not in ch and int(ch["GuideNumber"]) in self.wanted_channels:
                     tmp[ch["GuideName"]] = {"url": ch["URL"], "name": ch["GuideName"]}
 
             old_channels: list[str] = sorted(self.channels.keys())

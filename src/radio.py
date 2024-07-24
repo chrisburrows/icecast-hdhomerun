@@ -18,12 +18,6 @@ from icecast import Icecast
 from config import Config
 import hifi_berry
 
-APP_NAME = "Radio Belstead"
-HIFI_CHANNEL_NAME = "HiFi"
-OUTPUT_OWNTONE = "Owntone"
-OUTPUT_ICECAST = "Icecast"
-OWNTONE_CODEC = "s16le"
-
 ON: bool = True
 OFF: bool = False
 
@@ -42,6 +36,12 @@ def enable_debug(enabled: bool) -> None:
 
 
 class Radio(MqttServer):
+
+    APP_NAME = "Radio Belstead"
+    OUTPUT_OWNTONE = "Owntone"
+    OUTPUT_ICECAST = "Icecast"
+    OWNTONE_CODEC = "s16le"
+
     _logger = logging.getLogger(__name__)
 
     device: MqttDevice = MqttDevice(name=APP_NAME,
@@ -66,22 +66,22 @@ class Radio(MqttServer):
         self.ffmpeg_proc: ProcessRunner = ProcessRunner(callback=self._process_state_change)
 
         # MQTT sensors and switches
-        self.output_select: MqttSelect = MqttSelect(APP_NAME + " Output", self,
+        self.output_select: MqttSelect = MqttSelect(self.APP_NAME + " Output", self,
                                                     device=self.device, retain=True)
-        self.source_select: MqttSelect = MqttSelect(APP_NAME + " Station", self,
+        self.source_select: MqttSelect = MqttSelect(self.APP_NAME + " Station", self,
                                                     device=self.device, retain=True)
-        self.playback: MqttSwitch = MqttSwitch(APP_NAME + " Playback", self, OFF,
+        self.playback: MqttSwitch = MqttSwitch(self.APP_NAME + " Playback", self, OFF,
                                                device=self.device, retain=True)
-        self.playback_sensor: MqttSensor = MqttSensor(APP_NAME + " Sensor", self,
+        self.playback_sensor: MqttSensor = MqttSensor(self.APP_NAME + " Sensor", self,
                                                       device=self.device, retain=True)
-        self.idle_timeout_enable: MqttSwitch = MqttSwitch(APP_NAME + " Idle Timeout Enable", self,
+        self.idle_timeout_enable: MqttSwitch = MqttSwitch(self.APP_NAME + " Idle Timeout Enable", self,
                                                           OFF, device=self.device, retain=True)
-        self.auto_start: MqttSwitch = MqttSwitch(APP_NAME + " Playback Auto Start", self, ON,
+        self.auto_start: MqttSwitch = MqttSwitch(self.APP_NAME + " Playback Auto Start", self, ON,
                                                  device=self.device, retain=True)
-        self.debug: MqttSwitch = MqttSwitch(APP_NAME + " Debug Logging", self, ON,
+        self.debug: MqttSwitch = MqttSwitch(self.APP_NAME + " Debug Logging", self, ON,
                                             diagnostic=True, device=self.device, retain=True)
 
-        self.output_select.set_options([OUTPUT_OWNTONE, OUTPUT_ICECAST])
+        self.output_select.set_options([self.OUTPUT_OWNTONE, self.OUTPUT_ICECAST])
 
         # Bind MQTT callbacks
         self.playback.bind(self.on_off)
@@ -93,7 +93,7 @@ class Radio(MqttServer):
 
     def _channels_update(self, channels: list[str]) -> None:
         self._logger.debug("Channels updated")
-        self.source_select.set_options([HIFI_CHANNEL_NAME] + channels)
+        self.source_select.set_options(["HiFi"] + channels)
 
     def on_connect(self, client, userdata, flags, reason_code, properties) -> None:
         self._logger.debug("Radio on_connect")
@@ -102,16 +102,16 @@ class Radio(MqttServer):
     def on_off(self, is_on: bool) -> None:
         """Start / Stop command"""
         if is_on:
-            if self.ffmpeg_proc is None:
+            if self.ffmpeg_proc is not None:
                 self.play()
         else:
-            if self.ffmpeg_proc is not None:
-                if self.ffmpeg_proc.stop():
-                    self.playback_sensor.update("idle")
-                    self.ffmpeg_proc = None
-                else:
-                    self.playback_sensor.update("error")
-                    self.playback.update(OFF)
+            self.stop()
+            #if self.ffmpeg_proc is not None:
+                #if self.ffmpeg_proc.stop():
+                    #self.playback_sensor.update("idle")
+                #else:
+                    #self.playback_sensor.update("error")
+                    #self.playback.update(OFF)
 
     def play(self) -> None:
         """Start playback"""
@@ -124,7 +124,7 @@ class Radio(MqttServer):
 
         ffmpeg_command = self.ffmpeg.preamble()
 
-        if self.source == HIFI_CHANNEL_NAME:
+        if self.source == "HiFi":
             ffmpeg_command = ffmpeg_command + self.ffmpeg.hifiberry_input()
             input_description = "HiFi"
         else:
@@ -138,41 +138,51 @@ class Radio(MqttServer):
                 return
             ffmpeg_command = ffmpeg_command + self.ffmpeg.url_input(source_url)
 
-        if self.output_select.get_value() == OUTPUT_ICECAST:
+        if self.output_select.get_value() == self.OUTPUT_ICECAST:
             ffmpeg_command = (ffmpeg_command
                               + self.ffmpeg.codec(self.codec)
                               + self.ffmpeg.icecast_output(self.source,
                                                            input_description,
                                                            self.icecast.get_icecast_publish_url())
                               )
-            need_stdout = True
+            need_stdout = False
 
         else:
-            ffmpeg_command = (ffmpeg_command
-                              + self.ffmpeg.codec(OWNTONE_CODEC)
+            ffmpeg_command = (ffmpeg_command 
+                              + self.ffmpeg.codec(self.OWNTONE_CODEC) 
                               + self.ffmpeg.pipe_output())
-            need_stdout = False
+            need_stdout = True
 
         self._logger.debug(
             "Starting playback for {station}".format(station=self.source))
 
         self._logger.debug("FFMPEG command: {}".format(ffmpeg))
-        self.ffmpeg_proc.start(ffmpeg, restart=False)
+        self.ffmpeg_proc.start(ffmpeg_command, restart=False, stdout=need_stdout)
 
-        if self.output_select.get_value() == OUTPUT_OWNTONE:
-            self.owntone_output = PipeWriter(self.ffmpeg_proc.get_stdout(), self.owntone_pipe)
+        #if self.output_select.get_value() == self.OUTPUT_OWNTONE:
+        #    self.owntone_output = PipeWriter(self.ffmpeg_proc.get_stdout(), self.owntone_pipe)
 
     def stop(self):
         success = True
+        self.playback.update(OFF)
+
+        if self.owntone_output is not None:
+            self._logger.debug("Stopping owntone pipe writer")
+            self.owntone_output.stop()
+            self.owntone_output.wait()
+            self.owntone_output = None
+            self._logger.debug("Stopped owntone pipe writer")
+
         if self.ffmpeg_proc is not None and self.ffmpeg_proc.is_running():
             self._logger.debug("Stopping existing stream for {}".format(self.source))
             success = self.ffmpeg_proc.stop()
             if success:
-                self.playback.update(OFF)
                 self.playback_sensor.update("idle")
+                self._logger.debug("Stopped existing stream for {}".format(self.source))
             else:
                 self._logger.debug("Failed to stop existing stream: {}".format(self.source))
                 self.playback_sensor.update("error")
+
         return success
 
     def station(self, station: str) -> None:
@@ -190,7 +200,7 @@ class Radio(MqttServer):
         if not stopped:
             return
 
-        if station == HIFI_CHANNEL_NAME:
+        if station == "HiFi":
             self.source = station
         else:
             if self.tuner.get_channel_url(station) is not None:
@@ -234,16 +244,21 @@ class Radio(MqttServer):
             if self.ffmpeg_proc is not None:
                 self.ffmpeg_proc.stop()
                 self.ffmpeg_proc.wait()
+            self.owntone_output = None
 
     def _process_state_change(self, state: ProcessState, rc: int) -> None:
         """Handle subprocess (ffmpeg) state changes"""
         if state == ProcessState.STARTED:
             self.playback_sensor.update("playing")
             self.playback.update(ON)
+
+            if self.output_select.get_value() == self.OUTPUT_OWNTONE:
+                self.owntone_output = PipeWriter(self.ffmpeg_proc.get_stdout(), self.owntone_pipe)
         else:
             if self.owntone_output is not None:
                 self.owntone_output.stop()
                 self.owntone_output.wait()
+                self.owntone_output = None
             self.playback_sensor.update("idle")
             self.playback.update(OFF)
 

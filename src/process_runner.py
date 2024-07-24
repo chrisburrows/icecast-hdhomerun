@@ -28,43 +28,43 @@ class ProcessRunner:
         self._manager.start()
         atexit.register(self.stop)
 
-    def start(self, command: list[str], restart: bool = False):
+    def start(self, command: list[str], restart: bool = False, stdin: bool = False, stdout: bool = False, stderr: bool = False):
         """Pass the command to run"""
         self._logger.debug("Queuing command: {cmd} with restart {restart}"
                            .format(cmd=command, restart=restart))
-        self._queue.put((command, restart))
+        self._queue.put((command, restart, stdin, stdout, stderr))
 
     def _manage(self):
         """Wait for the command to run from the client"""
         self._logger.info("Waiting for command to run")
         while True:
             try:
-                (command, restart) = self._queue.get()
+                (command, restart, stdin, stdout, stderr) = self._queue.get()
                 self._queue.task_done()
                 self._logger.debug("Command: " + " ".join(command))
                 if self.is_running():
                     self._logger.debug("Stopping old command")
                     self.stop()
                     self._watcher.join(timeout=2)
-                self._watcher = threading.Thread(target=self._start, args=[command, restart])
+                self._watcher = threading.Thread(target=self._start, args=[command, restart, stdin, stdout, stderr])
                 self._watcher.start()
 
             except Exception as e:
                 self._logger.debug(str(e))
                 traceback.print_exc(file=sys.stdout)
 
-    def _start(self, command: list[str], restart: bool = False):
+    def _start(self, command: list[str], restart: bool, stdin: bool, stdout: bool, stderr: bool):
         """Start the required process running"""
 
-        self._logger.debug("Starting process")
+        self._logger.debug("Starting process: {cmd} restart: {restart} stdin: {stdin} stdout: {stdout} stderr: {stderr}".format(cmd=command, restart=restart, stdin=stdin, stdout=stdout, stderr=stderr))
         if command is None:
             raise Exception("No command specified")
 
         while True:
             self._process = subprocess.Popen(command,
-                                             stdin=None,
-                                             stdout=None,
-                                             stderr=None,
+                                             stdin=subprocess.PIPE if stdin else None,
+                                             stdout=subprocess.PIPE if stdout else None,
+                                             stderr=subprocess.PIPE if stderr else None,
                                              shell=False,
                                              start_new_session=True)
             if self._callback is not None:
@@ -88,7 +88,7 @@ class ProcessRunner:
         if self._process is not None and self._process.returncode is None:
             self._logger.debug("  - Terminating process")
             self._process.terminate()
-            for i in range(0, 25):
+            for i in range(0, 50):
                 if self._process.returncode is not None:
                     break
                 time.sleep(0.1)
@@ -96,9 +96,10 @@ class ProcessRunner:
             if self._process.returncode is None:
                 self._logger.debug("  - Killing process")
                 self._process.kill()
-                for i in range(0, 25):
+                for i in range(0, 50):
                     if self._process.returncode is not None:
                         break
+                    time.sleep(0.1)
                 if self._process.returncode is None:
                     return False
         return True
@@ -114,9 +115,12 @@ class ProcessRunner:
         return self._process.stdin if self._process is not None else None
 
     def get_stdout(self):
-        """Get the STDIN pipe for the command - to send it data"""
+        """Get the STDIN pipe for the command - to read data"""
         return self._process.stdout if self._process is not None else None
 
+    def get_stderr(self):
+        """Get the STDERR pipe for the command - to read data"""
+        return self._process.stderr if self._process is not None else None
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)

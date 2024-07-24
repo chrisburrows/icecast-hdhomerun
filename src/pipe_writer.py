@@ -16,6 +16,7 @@ CHUNK_SIZE = 1024
 
 def _non_blocking(fd) -> None:
     """Make a file descriptor non-blocking"""
+
     fl = fcntl.fcntl(fd, fcntl.F_GETFL)
     fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
@@ -26,6 +27,8 @@ class PipeWriter:
         self._callback = None
         self._audio_in = audio_in
         self._audio_out_filename = audio_out_filename
+
+        logging.debug("PipeWriter: {f} {t}".format(f=audio_in, t=type(audio_in)))
 
         # deque limits the number of elements to maxlen by discarding from the head
         # when elements are appended to the tail creating a fixed size buffer
@@ -49,7 +52,7 @@ class PipeWriter:
         """Register a callback to track state"""
         self._callback = callback
 
-    def _callback(self, state: ProcessState, rc: int) -> None:
+    def _do_callback(self, state: ProcessState, rc: int) -> None:
         if self._callback:
             self._callback(state, rc)
 
@@ -62,7 +65,7 @@ class PipeWriter:
         """Wait for the two threads to finish"""
         self._read_thread.join()
         self._write_thread.join()
-        self._callback(ProcessState.FINISHED)
+        self._do_callback(ProcessState.FINISHED, 0)
 
     def _writer(self):
         """
@@ -81,23 +84,24 @@ class PipeWriter:
                 temp = []
                 while not self._done:
                     try:
-                        audio = self.audio_buffers.popleft()
+                        audio = self._audio_buffers.popleft()
                         written = 0
                         while written < len(audio):
                             readable, writable, exceptional = select.select(streams, temp, temp, 0.5)
                             if exceptional:
                                 logging.error("Error writing output pipe")
-                                self._callback(ProcessState.ERROR, 0)
+                                self._do_callback(ProcessState.ERROR, 0)
                                 self.stop()
                                 return
 
                             if writable:
                                 written = written + audio_out.write(audio[written:])
+                                logging.debug("wrote {n} bytes".format(n=written))
 
                     except IndexError:
-                        logging.debug("Audio buffer empty... waiting for audio")
-                        with (self.audio_available):
-                            self.audio_available.wait(timeout=0.02)
+                        #logging.debug("Audio buffer empty... waiting for audio")
+                        with (self._audio_available):
+                            self._audio_available.wait(timeout=0.02)
 
             except IOError as e:
                 logging.info("Writer IO error")
@@ -110,26 +114,26 @@ class PipeWriter:
         the oldest data.
         """
         logging.info("Reader starting...")
-        _non_blocking(sys.stdin.fileno())
-        streams = [sys.stdin]
+        _non_blocking(self._audio_in)
+        streams = [self._audio_in]
         temp = []
         while not self._done:
             readable, writable, exceptional = select.select(streams, temp, temp, 0.5)
             if exceptional:
                 logging.error("Error reading from pipe")
-                self._callback(ProcessState.ERROR)
+                self._do_callback(ProcessState.ERROR)
                 self.stop()
                 return
 
             if readable:
-                audio = sys.stdin.buffer.read(CHUNK_SIZE)
-                self.audio_buffers.append(audio)
-                buffer_is_empty = len(self.audio_buffers) == 0
+                audio = self._audio_in.read(CHUNK_SIZE)
+                self._audio_buffers.append(audio)
+                buffer_is_empty = len(self._audio_buffers) == 0
 
-                if buffer_is_empty or len(self.audio_buffers) == 1:
+                if buffer_is_empty or len(self._audio_buffers) == 1:
                     logging.debug("Audio buffer was empty... notifying writer")
-                    with(self.audio_available):
-                        self.audio_available.notify()
+                    with(self._audio_available):
+                        self._audio_available.notify()
 
 
 if __name__ == "__main__":

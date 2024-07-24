@@ -93,3 +93,9 @@ class FFmpeg:
                 '-f', 'adts',
                 '-content_type', 'audio/aac'
             ]
+
+        if codec.lower() == "s16le":
+            return [
+                '-f', 's16le',
+                '-b:a', '48000'
+            ]

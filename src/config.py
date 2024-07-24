@@ -41,6 +41,11 @@ class Config(object):
     def hdhomerun_config(self) -> dict:
         """Return the HDHomeRun configuration"""
         return self.config['hdhomerun']
+
     def radio_stations_config(self) -> dict:
         """Return the radio stations configuration"""
         return self.config['stations']
+
+    def owntone_pipe(self) -> str:
+        """Return the path to the owntone pipe"""
+        return self.config['owntone_pipe']

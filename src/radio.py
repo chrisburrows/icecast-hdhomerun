@@ -57,7 +57,7 @@ class Radio(MqttServer):
         self.listeners_non_zero_time: int = 0
         self.codec: str = config.codec()
         self.owntone_output: PipeWriter = None
-        self.owntone_pipe: str = config['owntone_pipe']
+        self.owntone_pipe: str = config.owntone_pipe()
         self.icecast_idle_time: int = config.icecast_config()["idle_time"]
         self.source: str = None
         self.tuner: HdHomeRun = HdHomeRun(config.hdhomerun_config())

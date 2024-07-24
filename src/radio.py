@@ -190,12 +190,15 @@ class Radio(MqttServer):
         if not stopped:
             return
 
-        if self.tuner.get_channel_url(station) is not None:
+        if station == HIFI_CHANNEL_NAME:
             self.source = station
         else:
-            self._logger.debug("Non existent station {}".format(station))
-            self.playback_sensor.update("idle")
-            return
+            if self.tuner.get_channel_url(station) is not None:
+                self.source = station
+            else:
+                self._logger.debug("Non existent station {}".format(station))
+                self.playback_sensor.update("idle")
+                return
 
         if self.playback.is_on() or self.auto_start.is_on():
             self.play()
@@ -281,8 +284,6 @@ if __name__ == '__main__':
         configuration = Config(args.config)
         configuration.load()
         radio = Radio(configuration)
-
-        radio.hifi()
 
         radio.run()
     except KeyboardInterrupt:

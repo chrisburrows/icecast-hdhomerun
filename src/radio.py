@@ -21,6 +21,8 @@ import hifi_berry
 ON: bool = True
 OFF: bool = False
 
+logger = logging.getLogger(__name__)
+
 # static reference to FFMPEG executable and config strings
 ffmpeg: FFmpeg = FFmpeg()
 
@@ -286,7 +288,7 @@ class Radio(MqttServer):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)s %(module)s:%(funcName)s %(message)s")
 
     parser = argparse.ArgumentParser(
         prog="Local Radio Server",

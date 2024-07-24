@@ -36,7 +36,7 @@ class PipeWriter:
 
         # condition variable to kick writer to start again when
         # audio data is available
-        self._audio_available = threading.Condition()
+        self._audio_available = threading.Semaphore(0)
 
         # exit flag
         self._done = False
@@ -83,25 +83,27 @@ class PipeWriter:
                 streams = [audio_out]
                 temp = []
                 while not self._done:
-                    try:
-                        audio = self._audio_buffers.popleft()
-                        written = 0
-                        while written < len(audio):
-                            readable, writable, exceptional = select.select(streams, temp, temp, 0.5)
-                            if exceptional:
-                                logging.error("Error writing output pipe")
-                                self._do_callback(ProcessState.ERROR, 0)
-                                self.stop()
-                                return
+                    if self._audio_available.acquire(True, 0.1):
+                        try:
+                            # this could still throw an IndexError exception if the buffer deque is out of sync
+                            # with the semaphore. This all works OK as long as the semaphore value is always
+                            # >= buffers in the deque.
+                            audio = self._audio_buffers.popleft()
+                            written = 0
+                            while written < len(audio):
+                                readable, writable, exceptional = select.select(streams, temp, temp, 0.5)
+                                if exceptional:
+                                    logging.error("Error writing output pipe")
+                                    self._do_callback(ProcessState.ERROR, 0)
+                                    self.stop()
+                                    return
 
-                            if writable:
-                                written = written + audio_out.write(audio[written:])
-                                logging.debug("wrote {n} bytes".format(n=written))
+                                if writable:
+                                    written = written + audio_out.write(audio[written:])
+                                    logging.debug("wrote {n} bytes".format(n=written))
 
-                    except IndexError:
-                        #logging.debug("Audio buffer empty... waiting for audio")
-                        with (self._audio_available):
-                            self._audio_available.wait(timeout=0.02)
+                        except IndexError:
+                            logging.debug("Audio buffer empty... waiting for audio")
 
             except IOError as e:
                 logging.info("Writer IO error")
@@ -128,12 +130,12 @@ class PipeWriter:
             if readable:
                 audio = self._audio_in.read(CHUNK_SIZE)
                 self._audio_buffers.append(audio)
-                buffer_is_empty = len(self._audio_buffers) == 0
 
-                if buffer_is_empty or len(self._audio_buffers) == 1:
-                    logging.debug("Audio buffer was empty... notifying writer")
-                    with(self._audio_available):
-                        self._audio_available.notify()
+                # semaphore counts available buffers and synchronises between threads
+                # if the writer isn't keeping up, and the deque is discarding things,
+                # the semaphore value could exceed the available buffers in the deque.
+                # Consumer beware!
+                self._audio_available.release()
 
 
 if __name__ == "__main__":

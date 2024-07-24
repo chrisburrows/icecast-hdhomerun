@@ -22,10 +22,10 @@ def _non_blocking(fd) -> None:
 
 class PipeWriter:
 
-    def __init__(self, audio_in, audio_out):
+    def __init__(self, audio_in, audio_out_filename):
         self._callback = None
         self._audio_in = audio_in
-        self._audio_out = audio_out
+        self._audio_out_filename = audio_out_filename
 
         # deque limits the number of elements to maxlen by discarding from the head
         # when elements are appended to the tail creating a fixed size buffer

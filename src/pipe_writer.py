@@ -1,6 +1,7 @@
 import os
 import sys
 import threading
+import selectors
 import logging
 import argparse
 from collections import deque
@@ -73,15 +74,17 @@ class PipeWriter:
         reopen the output pipe (fifo) if it is closed.
         """
         logging.info("Writer starting...")
+        sel = selectors.DefaultSelector()
+
         while not self._done:
             try:
                 logging.info("Writer opening audio pipe")
                 audio_out = open(self._audio_out_filename, "wb")
                 _non_blocking(audio_out)
+                sel.register(audio_out, selectors.EVENT_WRITE)
+
                 logging.info("Writer successfully opened audio pipe")
 
-                streams = [audio_out]
-                temp = []
                 while not self._done:
                     if self._audio_available.acquire(True, 0.1):
                         try:
@@ -89,21 +92,17 @@ class PipeWriter:
                             # with the semaphore. This all works OK as long as the semaphore value is always
                             # >= buffers in the deque.
                             audio = self._audio_buffers.popleft()
+
                             written = 0
                             while written < len(audio):
-                                readable, writable, exceptional = select.select(streams, temp, temp, 0.5)
-                                if exceptional:
-                                    logging.error("Error writing output pipe")
-                                    self._do_callback(ProcessState.ERROR, 0)
-                                    self.stop()
-                                    return
-
-                                if writable:
-                                    written = written + audio_out.write(audio[written:])
-                                    logging.debug("wrote {n} bytes".format(n=written))
+                                events = sel.select(0.1)
+                                for key, mask in events:
+                                    if mask == selectors.EVENT_WRITE:
+                                        written = written + audio_out.write(audio[written:])
 
                         except IndexError:
-                            logging.debug("Audio buffer empty... waiting for audio")
+                            #logging.debug("Audio buffer empty... waiting for audio")
+                            pass
 
             except IOError as e:
                 logging.info("Writer IO error")
@@ -116,26 +115,22 @@ class PipeWriter:
         the oldest data.
         """
         logging.info("Reader starting...")
+        sel = selectors.DefaultSelector()
         _non_blocking(self._audio_in)
-        streams = [self._audio_in]
-        temp = []
+        sel.register(self._audio_in, selectors.EVENT_READ)
+
         while not self._done:
-            readable, writable, exceptional = select.select(streams, temp, temp, 0.5)
-            if exceptional:
-                logging.error("Error reading from pipe")
-                self._do_callback(ProcessState.ERROR)
-                self.stop()
-                return
+            events = sel.select(0.1)
+            for key, mask in events:
+                if mask == selectors.EVENT_READ:
+                    audio = self._audio_in.read(CHUNK_SIZE)
+                    self._audio_buffers.append(audio)
 
-            if readable:
-                audio = self._audio_in.read(CHUNK_SIZE)
-                self._audio_buffers.append(audio)
-
-                # semaphore counts available buffers and synchronises between threads
-                # if the writer isn't keeping up, and the deque is discarding things,
-                # the semaphore value could exceed the available buffers in the deque.
-                # Consumer beware!
-                self._audio_available.release()
+                    # semaphore counts available buffers and synchronises between threads
+                    # if the writer isn't keeping up, and the deque is discarding things,
+                    # the semaphore value could exceed the available buffers in the deque.
+                    # Consumer beware!
+                    self._audio_available.release()
 
 
 if __name__ == "__main__":

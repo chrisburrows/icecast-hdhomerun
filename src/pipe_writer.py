@@ -62,10 +62,21 @@ class PipeWriter:
 
         self._done = True
 
+    def is_running(self) -> bool:
+        """Return true if the threads are both still running"""
+        return self._read_thread.isAlive() and self._write_thread.isAlive()
+
     def wait(self) -> None:
         """Wait for the two threads to finish"""
-        self._read_thread.join()
-        self._write_thread.join()
+
+        while self._read_thread.isAlive() or self._write_thread.isAlive():
+            self._read_thread.join(0.25)
+            self._write_thread.join(0.25)
+
+            # if either thread has exited (maybe because of an IOError) stop the other one
+            if not self.is_running():
+                self.stop()
+
         self._do_callback(ProcessState.FINISHED, 0)
 
     def _writer(self):
@@ -106,6 +117,8 @@ class PipeWriter:
 
             except IOError as e:
                 logging.info("Writer IO error")
+            finally:
+                audio_out.close()
 
     def _reader(self):
         """
@@ -114,23 +127,30 @@ class PipeWriter:
         buffer elements to its capacity by discarding the first buffer... i.e. it drops
         the oldest data.
         """
-        logging.info("Reader starting...")
-        sel = selectors.DefaultSelector()
-        _non_blocking(self._audio_in)
-        sel.register(self._audio_in, selectors.EVENT_READ)
 
-        while not self._done:
-            events = sel.select(0.1)
-            for key, mask in events:
-                if mask == selectors.EVENT_READ:
-                    audio = self._audio_in.read(CHUNK_SIZE)
-                    self._audio_buffers.append(audio)
+        try:
+            logging.info("Reader starting...")
+            sel = selectors.DefaultSelector()
+            _non_blocking(self._audio_in)
+            sel.register(self._audio_in, selectors.EVENT_READ)
 
-                    # semaphore counts available buffers and synchronises between threads
-                    # if the writer isn't keeping up, and the deque is discarding things,
-                    # the semaphore value could exceed the available buffers in the deque.
-                    # Consumer beware!
-                    self._audio_available.release()
+            while not self._done:
+                events = sel.select(0.1)
+                for key, mask in events:
+                    if mask == selectors.EVENT_READ:
+                        audio = self._audio_in.read(CHUNK_SIZE)
+                        self._audio_buffers.append(audio)
+
+                        # semaphore counts available buffers and synchronises between threads
+                        # if the writer isn't keeping up, and the deque is discarding things,
+                        # the semaphore value could exceed the available buffers in the deque.
+                        # Consumer beware!
+                        self._audio_available.release()
+
+        except IOError as e:
+            logging.error("Error reading audio data")
+        finally:
+            self._audio_in.close()
 
 
 if __name__ == "__main__":

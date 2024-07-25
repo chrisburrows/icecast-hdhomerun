@@ -10,12 +10,13 @@ from typing import Callable
 
 from process_state import ProcessState
 
+logger = logging.getLogger(__name__)
+
 
 class ProcessRunner:
-    _logger = logging.getLogger(__name__)
 
     def __init__(self, callback: Callable, pipe_stdin: bool = False, pipe_stdout: bool = False) -> None:
-        self._logger.info("Starting ProcessRunner")
+        logger.info("Starting ProcessRunner")
         self._callback = callback
         self._pipe_stdin = pipe_stdin
         self._pipe_stdout = pipe_stdout
@@ -30,33 +31,33 @@ class ProcessRunner:
 
     def start(self, command: list[str], restart: bool = False, stdin: bool = False, stdout: bool = False, stderr: bool = False):
         """Pass the command to run"""
-        self._logger.debug("Queuing command: {cmd} with restart {restart}"
+        logger.debug("Queuing command: {cmd} with restart {restart}"
                            .format(cmd=command, restart=restart))
         self._queue.put((command, restart, stdin, stdout, stderr))
 
     def _manage(self):
         """Wait for the command to run from the client"""
-        self._logger.info("Waiting for command to run")
+        logger.info("Waiting for command to run")
         while True:
             try:
                 (command, restart, stdin, stdout, stderr) = self._queue.get()
                 self._queue.task_done()
-                self._logger.debug("Command: " + " ".join(command))
+                logger.debug("Command: " + " ".join(command))
                 if self.is_running():
-                    self._logger.debug("Stopping old command")
+                    logger.debug("Stopping old command")
                     self.stop()
                     self._watcher.join(timeout=2)
                 self._watcher = threading.Thread(target=self._start, args=[command, restart, stdin, stdout, stderr])
                 self._watcher.start()
 
             except Exception as e:
-                self._logger.debug(str(e))
+                logger.debug(str(e))
                 traceback.print_exc(file=sys.stdout)
 
     def _start(self, command: list[str], restart: bool, stdin: bool, stdout: bool, stderr: bool):
         """Start the required process running"""
 
-        self._logger.debug("Starting process: {cmd} restart: {restart} stdin: {stdin} stdout: {stdout} stderr: {stderr}".format(cmd=command, restart=restart, stdin=stdin, stdout=stdout, stderr=stderr))
+        logger.debug("Starting process: {cmd} restart: {restart} stdin: {stdin} stdout: {stdout} stderr: {stderr}".format(cmd=command, restart=restart, stdin=stdin, stdout=stdout, stderr=stderr))
         if command is None:
             raise Exception("No command specified")
 
@@ -65,12 +66,16 @@ class ProcessRunner:
                                              stdin=subprocess.PIPE if stdin else None,
                                              stdout=subprocess.PIPE if stdout else None,
                                              stderr=subprocess.PIPE if stderr else None,
+                                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
                                              shell=False,
+                                             pipesize=4096,
                                              start_new_session=True)
             if self._callback is not None:
                 self._callback(ProcessState.STARTED, 0)
 
+            logger.debug("Waiting for process to finish")
             self._process.wait()
+            logger.debug("Process has exited with status {rc}".format(rc=self._process.returncode))
 
             if self._callback is not None:
                 self._callback(ProcessState.STOPPED, self._process.returncode)
@@ -84,9 +89,9 @@ class ProcessRunner:
     def stop(self):
         """Stop the subprocess"""
 
-        self._logger.debug("Stopping process")
+        logger.debug("Stopping process")
         if self._process is not None and self._process.returncode is None:
-            self._logger.debug("  - Terminating process")
+            logger.debug("  - Terminating process")
             self._process.terminate()
             for i in range(0, 50):
                 if self._process.returncode is not None:
@@ -94,7 +99,7 @@ class ProcessRunner:
                 time.sleep(0.1)
 
             if self._process.returncode is None:
-                self._logger.debug("  - Killing process")
+                logger.debug("  - Killing process")
                 self._process.kill()
                 for i in range(0, 50):
                     if self._process.returncode is not None:
@@ -107,7 +112,7 @@ class ProcessRunner:
     def wait(self):
         """Wait for the process to complete"""
         if self._process is not None and self._process.returncode is None:
-            self._logger.debug("Waiting for process")
+            logger.debug("Waiting for process")
             self._process.wait()
 
     def get_stdin(self):

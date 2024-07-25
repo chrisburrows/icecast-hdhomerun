@@ -38,7 +38,6 @@ def enable_debug(enabled: bool) -> None:
 
 
 class Radio(MqttServer):
-
     APP_NAME = "Radio Belstead"
     OUTPUT_OWNTONE = "Owntone"
     OUTPUT_ICECAST = "Icecast"
@@ -102,18 +101,11 @@ class Radio(MqttServer):
         super().on_connect(client, userdata, flags, reason_code, properties)
 
     def on_off(self, is_on: bool) -> None:
-        """Start / Stop command"""
+        """Start / Stop command from MQTT"""
         if is_on:
-            if self.ffmpeg_proc is not None:
-                self.play()
+            self.play()
         else:
             self.stop()
-            #if self.ffmpeg_proc is not None:
-                #if self.ffmpeg_proc.stop():
-                    #self.playback_sensor.update("idle")
-                #else:
-                    #self.playback_sensor.update("error")
-                    #self.playback.update(OFF)
 
     def play(self) -> None:
         """Start playback"""
@@ -150,8 +142,8 @@ class Radio(MqttServer):
             need_stdout = False
 
         else:
-            ffmpeg_command = (ffmpeg_command 
-                              + self.ffmpeg.codec(self.OWNTONE_CODEC) 
+            ffmpeg_command = (ffmpeg_command
+                              + self.ffmpeg.codec(self.OWNTONE_CODEC)
                               + self.ffmpeg.pipe_output())
             need_stdout = True
 
@@ -161,21 +153,15 @@ class Radio(MqttServer):
         self._logger.debug("FFMPEG command: {}".format(ffmpeg))
         self.ffmpeg_proc.start(ffmpeg_command, restart=False, stdout=need_stdout)
 
-        #if self.output_select.get_value() == self.OUTPUT_OWNTONE:
-        #    self.owntone_output = PipeWriter(self.ffmpeg_proc.get_stdout(), self.owntone_pipe)
-
     def stop(self):
+        """Stop the streaming processes"""
+
         success = True
         self.playback.update(OFF)
 
-        if self.owntone_output is not None:
-            self._logger.debug("Stopping owntone pipe writer")
-            self.owntone_output.stop()
-            self.owntone_output.wait()
-            self.owntone_output = None
-            self._logger.debug("Stopped owntone pipe writer")
-
-        if self.ffmpeg_proc is not None and self.ffmpeg_proc.is_running():
+        # stop the FFMPEG process first so the pipe-writer (if there is one) is still reading from ffmpeg's STDOUT
+        # to ensure any kill signals don't fail because ffmpeg is blocked writing to it's output pipe
+        if self.ffmpeg_proc.is_running():
             self._logger.debug("Stopping existing stream for {}".format(self.source))
             success = self.ffmpeg_proc.stop()
             if success:
@@ -184,6 +170,13 @@ class Radio(MqttServer):
             else:
                 self._logger.debug("Failed to stop existing stream: {}".format(self.source))
                 self.playback_sensor.update("error")
+
+        if self.owntone_output is not None:
+            self._logger.debug("Stopping owntone pipe writer")
+            self.owntone_output.stop()
+            self.owntone_output.wait()
+            self.owntone_output = None
+            self._logger.debug("Stopped owntone pipe writer")
 
         return success
 

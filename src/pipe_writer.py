@@ -167,7 +167,11 @@ class PipeWriter:
             finally:
                 self.writer_is_running.clear()
                 if audio_out is not None:
-                    audio_out.close()
+                    try:
+                        sel.unregister(audio_out)
+                        audio_out.close()
+                    except IOError:
+                        pass
 
     def _reader(self):
         """

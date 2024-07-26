@@ -66,7 +66,6 @@ class ProcessRunner:
                                              stdin=subprocess.PIPE if stdin else None,
                                              stdout=subprocess.PIPE if stdout else None,
                                              stderr=subprocess.PIPE if stderr else None,
-                                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
                                              shell=False,
                                              pipesize=4096,
                                              start_new_session=True)

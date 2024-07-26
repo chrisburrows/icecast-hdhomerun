@@ -1,3 +1,4 @@
+from math import ceil
 import os
 import sys
 import time
@@ -32,8 +33,8 @@ OUTPUT_RATE_BYTES_PER_SEC = OUTPUT_SAMPLE_RATE_HZ * OUTPUT_SAMPLE_SIZE * OUTPUT_
 BUFFER_CAPACITY_SECS = 1.0
 
 IO_CHUNK_SIZE = 2048
-BUFFER_CHUNKS = OUTPUT_RATE_BYTES_PER_SEC * BUFFER_CAPACITY_SECS / IO_CHUNK_SIZE
-MAX_CHUNKS = BUFFER_CHUNKS * 1.2
+BUFFER_CHUNKS = ceil(OUTPUT_RATE_BYTES_PER_SEC * BUFFER_CAPACITY_SECS / IO_CHUNK_SIZE)
+MAX_CHUNKS = ceil(BUFFER_CHUNKS * 1.2)
 
 # time constants
 FIFTY_MS = 50 / 1000
@@ -61,7 +62,7 @@ class PipeWriter:
             logging.error("audio output path isn't a pipe")
             return
 
-        logging.info("Buffering up to {s} ms using {d} buffer chunks".format(s=BUFFER_CAPACITY_SECS, d=BUFFER_CHUNKS))
+        logging.info("Buffering up to {s} ms using {d} buffer chunks".format(s=BUFFER_CAPACITY_SECS * 1000, d=BUFFER_CHUNKS))
         
         # deque limits the number of elements to maxlen by discarding from the head
         # when elements are appended to the tail creating a fixed size buffer

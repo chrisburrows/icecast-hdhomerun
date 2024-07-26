@@ -1,10 +1,12 @@
 import os
 import sys
+import time
 import threading
 import selectors
 import logging
 import argparse
 from collections import deque
+from pathlib import Path
 
 import fcntl
 import select
@@ -12,7 +14,7 @@ import select
 from process_state import ProcessState
 
 MAX_CHUNKS = 256
-CHUNK_SIZE = 1024
+CHUNK_SIZE = 2048
 
 
 def _non_blocking(fd) -> None:
@@ -28,8 +30,13 @@ class PipeWriter:
         self._callback = None
         self._audio_in = audio_in
         self._audio_out_filename = audio_out_filename
+        self._read_thread = None
+        self._write_thread = None
 
-        logging.debug("PipeWriter: {f} {t}".format(f=audio_in, t=type(audio_in)))
+        audio_out_path = Path(audio_out_filename)
+        if not audio_out_path.is_fifo():
+            logging.error("audio output path isn't a pipe")
+            return
 
         # deque limits the number of elements to maxlen by discarding from the head
         # when elements are appended to the tail creating a fixed size buffer
@@ -64,12 +71,12 @@ class PipeWriter:
 
     def is_running(self) -> bool:
         """Return true if the threads are both still running"""
-        return self._read_thread.isAlive() and self._write_thread.isAlive()
+        return self._read_thread is not None and self._write_thread is not None and self._read_thread.is_alive() and self._write_thread.is_alive()
 
     def wait(self) -> None:
         """Wait for the two threads to finish"""
 
-        while self._read_thread.isAlive() or self._write_thread.isAlive():
+        while self._read_thread is not None and self._write_thread is not None and (self._read_thread.is_alive() or self._write_thread.is_alive()):
             self._read_thread.join(0.25)
             self._write_thread.join(0.25)
 
@@ -87,6 +94,7 @@ class PipeWriter:
         logging.info("Writer starting...")
         sel = selectors.DefaultSelector()
 
+        audio_out = None
         while not self._done:
             try:
                 logging.info("Writer opening audio pipe")
@@ -95,7 +103,9 @@ class PipeWriter:
                 sel.register(audio_out, selectors.EVENT_WRITE)
 
                 logging.info("Writer successfully opened audio pipe")
-
+                total_bytes = 0
+                start_time = time.time()
+                next_time = start_time + 2.0
                 while not self._done:
                     if self._audio_available.acquire(True, 0.1):
                         try:
@@ -111,6 +121,16 @@ class PipeWriter:
                                     if mask == selectors.EVENT_WRITE:
                                         written = written + audio_out.write(audio[written:])
 
+                            total_bytes = total_bytes + written
+                            now = time.time()
+                            if now >= next_time:
+                                elapsed = now - start_time
+                                rate = total_bytes / elapsed * 8
+                                logging.debug("Rate: {r}, buffers: {b}".format(r=rate, b=len(self._audio_buffers)))
+
+                                start_time = now
+                                next_time = start_time + 2.0
+                                total_bytes = 0
                         except IndexError:
                             #logging.debug("Audio buffer empty... waiting for audio")
                             pass
@@ -118,7 +138,8 @@ class PipeWriter:
             except IOError as e:
                 logging.info("Writer IO error")
             finally:
-                audio_out.close()
+                if audio_out is not None:
+                    audio_out.close()
 
     def _reader(self):
         """
@@ -133,7 +154,8 @@ class PipeWriter:
             sel = selectors.DefaultSelector()
             _non_blocking(self._audio_in)
             sel.register(self._audio_in, selectors.EVENT_READ)
-
+            startup_buffer = MAX_CHUNKS / 2
+            buffering = True
             while not self._done:
                 events = sel.select(0.1)
                 for key, mask in events:
@@ -145,7 +167,12 @@ class PipeWriter:
                         # if the writer isn't keeping up, and the deque is discarding things,
                         # the semaphore value could exceed the available buffers in the deque.
                         # Consumer beware!
-                        self._audio_available.release()
+                        if buffering:
+                            if len(self._audio_buffers) >= startup_buffer:
+                                buffering = False
+                                self._audio_available.release(len(self._audio_buffers))
+                        else:
+                            self._audio_available.release()
 
         except IOError as e:
             logging.error("Error reading audio data")

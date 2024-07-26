@@ -22,7 +22,7 @@ class MqttServer(object):
     _default_username: str = "mqtt"
     _default_password: str = "mqtt"
     _default_port: int = 1883
-    status_topic: str = "status"
+    _default_status_topic: str = "status"
 
     def __init__(self, config: dict):
         self._client: mqtt.Client = None
@@ -37,6 +37,7 @@ class MqttServer(object):
         self.topic_root = config.get("base_topic").lower()
         if self.topic_root[-1] != "/":
             self.topic_root += "/"
+        self.status_topic = self.topic_root + self._default_status_topic
 
         self.validate()
 

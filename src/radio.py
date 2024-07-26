@@ -157,6 +157,7 @@ class Radio(MqttServer):
         """Stop the streaming processes"""
 
         success = True
+        sensor_value = "idle"
         self.playback.update(OFF)
 
         # stop the FFMPEG process first so the pipe-writer (if there is one) is still reading from ffmpeg's STDOUT
@@ -165,19 +166,19 @@ class Radio(MqttServer):
             self._logger.debug("Stopping existing stream for {}".format(self.source))
             success = self.ffmpeg_proc.stop()
             if success:
-                self.playback_sensor.update("idle")
                 self._logger.debug("Stopped existing stream for {}".format(self.source))
             else:
+                sensor_value = "ffmpeg error"
                 self._logger.debug("Failed to stop existing stream: {}".format(self.source))
-                self.playback_sensor.update("error")
 
-        if self.owntone_output is not None:
-            self._logger.debug("Stopping owntone pipe writer")
-            self.owntone_output.stop()
-            self.owntone_output.wait()
-            self.owntone_output = None
-            self._logger.debug("Stopped owntone pipe writer")
+        #if self.owntone_output is not None:
+        #    self._logger.debug("Stopping owntone pipe writer")
+        #    self.owntone_output.stop()
+        #    self.owntone_output.wait()
+        #    self.owntone_output = None
+        #    self._logger.debug("Stopped owntone pipe writer")
 
+        self.playback_sensor.update(sensor_value)
         return success
 
     def station(self, station: str) -> None:
@@ -244,17 +245,31 @@ class Radio(MqttServer):
     def _process_state_change(self, state: ProcessState, rc: int) -> None:
         """Handle subprocess (ffmpeg) state changes"""
         if state == ProcessState.STARTED:
-            self.playback_sensor.update("playing")
+            logging.debug("Process state change for STARTED")
             self.playback.update(ON)
+            destination = "icecast"
 
             if self.output_select.get_value() == self.OUTPUT_OWNTONE:
+                destination = "owntone"
                 self.owntone_output = PipeWriter(self.ffmpeg_proc.get_stdout(), self.owntone_pipe)
+                if not self.owntone_output.is_running():
+                    self.stop()
+
+            self.playback_sensor.update("playing " + destination)
+
         else:
-            if self.owntone_output is not None:
-                self.owntone_output.stop()
-                self.owntone_output.wait()
-                self.owntone_output = None
-            self.playback_sensor.update("idle")
+            logging.debug("Process state change for STOPPED")
+            status = "idle"
+            if self.output_select.get_value() == self.OUTPUT_OWNTONE:
+                if self.owntone_output is not None:
+                    if not self.owntone_output.is_running():
+                        status = "owntone error"
+                    self.owntone_output.stop()
+                    self.owntone_output.wait()
+                    self.owntone_output = None
+                else:
+                    status = "pipe writer error"
+            self.playback_sensor.update(status)
             self.playback.update(OFF)
 
     def terminate(self):

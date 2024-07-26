@@ -34,7 +34,7 @@ class FFmpeg:
             '-i', '{source}'.format(source=source_url),
             '-vn',
             '-map', '0:a:0',
-            '-ar', '48000',
+#            '-ar', '48000',
             '-ac', '2'
         ]
 
@@ -97,5 +97,5 @@ class FFmpeg:
         if codec.lower() == "s16le":
             return [
                 '-f', 's16le',
-                '-b:a', '48000'
+                '-r', '44100'
             ]

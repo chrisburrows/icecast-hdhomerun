@@ -24,13 +24,21 @@ from process_state import ProcessState
 # In this use case, we also want the reader from the incoming pipe to be able to always read data and have it
 # discarded if there's no active consumer.
 
-MAX_CHUNKS = 256
-CHUNK_SIZE = 2048
+# These should match the output from ffmpeg
+OUTPUT_SAMPLE_RATE_HZ = 44100
+OUTPUT_SAMPLE_SIZE = 2  # 16 bit samples
+OUTPUT_CHANNELS = 2  # stereo
+OUTPUT_RATE_BYTES_PER_SEC = OUTPUT_SAMPLE_RATE_HZ * OUTPUT_SAMPLE_SIZE * OUTPUT_CHANNELS
+BUFFER_CAPACITY_SECS = 1.0
+
+IO_CHUNK_SIZE = 2048
+BUFFER_CHUNKS = OUTPUT_RATE_BYTES_PER_SEC * BUFFER_CAPACITY_SECS / IO_CHUNK_SIZE
+MAX_CHUNKS = BUFFER_CHUNKS * 1.2
 
 # time constants
-TWENTY_MS = 20 / 1000
 FIFTY_MS = 50 / 1000
 ONE_HUNDRED_MS = 2 * FIFTY_MS
+
 
 def _non_blocking(fd) -> None:
     """Make a file descriptor non-blocking"""
@@ -53,6 +61,8 @@ class PipeWriter:
             logging.error("audio output path isn't a pipe")
             return
 
+        logging.info("Buffering up to {s} ms using {d} buffer chunks".format(s=BUFFER_CAPACITY_SECS, d=BUFFER_CHUNKS))
+        
         # deque limits the number of elements to maxlen by discarding from the head
         # when elements are appended to the tail creating a fixed size buffer
         self._audio_buffers = deque(maxlen=MAX_CHUNKS)
@@ -91,7 +101,8 @@ class PipeWriter:
     def wait(self) -> None:
         """Wait for the two threads to finish"""
 
-        while self._read_thread is not None and self._write_thread is not None and (self._read_thread.is_alive() or self._write_thread.is_alive()):
+        while self._read_thread is not None and self._write_thread is not None and (
+                self._read_thread.is_alive() or self._write_thread.is_alive()):
             self._read_thread.join(0.25)
             self._write_thread.join(0.25)
 
@@ -147,7 +158,7 @@ class PipeWriter:
                                 next_time = start_time + 2.0
                                 total_bytes = 0
                         except IndexError:
-                            #logging.debug("Audio buffer empty... waiting for audio")
+                            # logging.debug("Audio buffer empty... waiting for audio")
                             pass
 
             except IOError as e:
@@ -176,9 +187,8 @@ class PipeWriter:
                 events = sel.select(0.1)
                 for key, mask in events:
                     if mask == selectors.EVENT_READ:
-                        audio = self._audio_in.read(CHUNK_SIZE)
-
-                        while self.writer_is_running.is_set() and len(self._audio_buffers) > 200:
+                        audio = self._audio_in.read(IO_CHUNK_SIZE)
+                        while self.writer_is_running.is_set() and len(self._audio_buffers) > BUFFER_CHUNKS:
                             time.sleep(FIFTY_MS)
 
                         self._audio_buffers.append(audio)

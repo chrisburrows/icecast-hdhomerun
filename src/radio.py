@@ -77,8 +77,6 @@ class Radio(MqttServer):
                                                       device=self.device, retain=True)
         self.idle_timeout_enable: MqttSwitch = MqttSwitch(self.APP_NAME + " Idle Timeout Enable", self,
                                                           OFF, device=self.device, retain=True)
-        self.auto_start: MqttSwitch = MqttSwitch(self.APP_NAME + " Playback Auto Start", self, ON,
-                                                 device=self.device, retain=True)
         self.debug: MqttSwitch = MqttSwitch(self.APP_NAME + " Debug Logging", self, ON,
                                             diagnostic=True, device=self.device, retain=True)
 
@@ -87,6 +85,7 @@ class Radio(MqttServer):
         # Bind MQTT callbacks
         self.playback.bind(self.on_off)
         self.source_select.bind(self.station)
+        self.output_select.bind(self.output)
         self.icecast.bind(self.icecast.get_icecast_listen_url(), self.listeners)
         self.tuner.bind(self._channels_update)
         self.debug.bind(enable_debug)
@@ -181,10 +180,19 @@ class Radio(MqttServer):
         self.playback_sensor.update(sensor_value)
         return success
 
+    def output(self, destination: str) -> None:
+        """Output destination has been changed, owntone <--> icecast"""
+        self._logger.debug("Output request {out}".format(out=destination))
+
+        if self.playback.is_on():
+            self.stop()
+            self.play()
+
     def station(self, station: str) -> None:
         """Process selection / change of playback station"""
         self._logger.debug("Station request: {}".format(station))
 
+        playing = self.playback.is_on()
         stopped = True
         if self.source is not None and station.lower() == self.source.lower():
             if self.ffmpeg_proc is not None and self.ffmpeg_proc.is_running():
@@ -206,7 +214,7 @@ class Radio(MqttServer):
                 self.playback_sensor.update("idle")
                 return
 
-        if self.playback.is_on() or self.auto_start.is_on():
+        if playing:
             self.play()
 
     def listeners(self, station: str, count: int) -> None:
@@ -260,15 +268,12 @@ class Radio(MqttServer):
         else:
             logging.debug("Process state change for STOPPED")
             status = "idle"
-            if self.output_select.get_value() == self.OUTPUT_OWNTONE:
-                if self.owntone_output is not None:
-                    if not self.owntone_output.is_running():
-                        status = "owntone error"
-                    self.owntone_output.stop()
-                    self.owntone_output.wait()
-                    self.owntone_output = None
-                else:
-                    status = "pipe writer error"
+            if self.owntone_output is not None:
+                if not self.owntone_output.is_running():
+                    status = "owntone error"
+                self.owntone_output.stop()
+                self.owntone_output.wait()
+                self.owntone_output = None
             self.playback_sensor.update(status)
             self.playback.update(OFF)
 

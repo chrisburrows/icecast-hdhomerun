@@ -29,26 +29,3 @@ class MqttBinarySensor(MqttBaseSensor):
         return False
 
 
-if __name__ == "__main__":
-    mqtt_config = {
-        "host": "mqtt.home",
-        "username": "monitor",
-        "password": "7uGGEfryZqNk",
-        "topic_root": "radio-hdhomerun"
-    }
-
-    logging.basicConfig(level=logging.DEBUG)
-    server = MqttServer(mqtt_config)
-    b_sensor = MqttBinarySensor("test_binary", server)
-    b_sensor2 = MqttBinarySensor("test_binary2", server)
-
-    server.run()
-    b_sensor.update(True)
-    b_sensor2.update(False)
-
-    time.sleep(15)
-    b_sensor.update(False)
-    b_sensor2.update(True)
-
-    time.sleep(9999)
-

@@ -55,18 +55,3 @@ class MqttSelect(MqttBaseSensor):
         self._ha_discovery()
 
 
-if __name__ == '__main__':
-    mqtt_config = {
-        "host": "mqtt.home",
-        "username": "monitor",
-        "password": "7uGGEfryZqNk",
-        "topic_root": "radio-hdhomerun"
-    }
-
-    logging.basicConfig(level=logging.DEBUG)
-    server = MqttServer(mqtt_config)
-    select = MqttSelect("test_select", server, ["one", "two", "three", "four"])
-
-    server.run()
-
-    time.sleep(999)

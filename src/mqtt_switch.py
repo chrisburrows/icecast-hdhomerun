@@ -44,19 +44,3 @@ class MqttSwitch(MqttBaseSensor):
     def is_on(self) -> bool:
         return self.value == "on"
 
-if __name__ == "__main__":
-    mqtt_config = {
-        "host": "mqtt.home",
-        "username": "monitor",
-        "password": "7uGGEfryZqNk",
-        "topic_root": "radio-hdhomerun"
-    }
-
-    logging.basicConfig(level=logging.DEBUG)
-    server = MqttServer(mqtt_config)
-    switch = MqttSwitch("test_switch", "test_switch", server)
-    switch2 = MqttSwitch("test_switch2", "test_switch2", server)
-
-    server.run()
-
-    time.sleep(9999)

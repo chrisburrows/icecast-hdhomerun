@@ -1,0 +1,21 @@
+---
+version: "3"
+
+services:
+  radio:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+
+    container_name: radio
+    restart: unless-stopped
+    image: qnap.home:6088/radio:1.0
+
+    volumes:
+      - ./config.json:/radio/etc/config.json:ro
+      - /home/owntone/music/radio:/owntone-pipe
+      - /etc/timezone:/etc/timezone:ro
+
+    devices:
+      - "/dev/snd:/dev/snd"
+              

@@ -67,17 +67,17 @@ class Radio(MqttServer):
         self.ffmpeg_proc: ProcessRunner = ProcessRunner(callback=self._process_state_change)
 
         # MQTT sensors and switches
-        self.output_select: MqttSelect = MqttSelect(self.APP_NAME + " Output", self,
+        self.output_select: MqttSelect = MqttSelect("Output", self,
                                                     device=self.device, retain=True)
-        self.source_select: MqttSelect = MqttSelect(self.APP_NAME + " Station", self,
+        self.source_select: MqttSelect = MqttSelect("Station", self,
                                                     device=self.device, retain=True)
-        self.playback: MqttSwitch = MqttSwitch(self.APP_NAME + " Playback", self, OFF,
+        self.playback: MqttSwitch = MqttSwitch("Playback", self, OFF,
                                                device=self.device, retain=True)
-        self.playback_sensor: MqttSensor = MqttSensor(self.APP_NAME + " Sensor", self,
+        self.playback_sensor: MqttSensor = MqttSensor("Sensor", self,
                                                       device=self.device, retain=True)
-        self.idle_timeout_enable: MqttSwitch = MqttSwitch(self.APP_NAME + " Idle Timeout Enable", self,
+        self.idle_timeout_enable: MqttSwitch = MqttSwitch("Idle Timeout Enable", self,
                                                           OFF, device=self.device, retain=True)
-        self.debug: MqttSwitch = MqttSwitch(self.APP_NAME + " Debug Logging", self, ON,
+        self.debug: MqttSwitch = MqttSwitch("Debug Logging", self, ON,
                                             diagnostic=True, device=self.device, retain=True)
 
         self.output_select.set_options([self.OUTPUT_OWNTONE, self.OUTPUT_ICECAST])

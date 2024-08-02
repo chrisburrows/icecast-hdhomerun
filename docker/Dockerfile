@@ -7,7 +7,7 @@ RUN apt-get autoclean
 
 RUN mkdir -p /radio/src /radio/etc
 
-COPY src/* /radio/src
+COPY src/* /radio/src/
 COPY requirements.txt /radio
 
 RUN pip install --upgrade pip
